@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PostAI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #faf7f4;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 16px 20px;
+      font-size: 17px;
+      font-weight: 600;
+      color: #1a1a1a;
+      border-bottom: 1px solid #ece8e2;
+      background: #faf7f4;
+    }
+
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .msg {
+      max-width: 85%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .msg.user {
+      background: #f0e6d3;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+      color: #1a1a1a;
+    }
+
+    .msg.bot {
+      background: white;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+      color: #1a1a1a;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .msg.bot.typing {
+      color: #999;
+      font-style: italic;
+    }
+
+    .post-card {
+      background: white;
+      border: 1px solid #ece8e2;
+      border-radius: 14px;
+      padding: 14px;
+      margin-top: 8px;
+    }
+
+    .post-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .platform-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+    }
+
+    .copy-btn {
+      font-size: 12px;
+      padding: 4px 10px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      background: white;
+      cursor: pointer;
+      color: #555;
+    }
+
+    .copy-btn:hover { background: #f5f5f5; }
+
+    .post-content {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      white-space: pre-wrap;
+    }
+
+    .post-hashtags {
+      font-size: 13px;
+      color: #888;
+      margin-top: 6px;
+    }
+
+    .options-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .option-chip {
+      padding: 7px 14px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+      background: white;
+      color: #333;
+      transition: all 0.15s;
+    }
+
+    .option-chip:hover, .option-chip.selected {
+      background: #1a1a1a;
+      color: white;
+      border-color: #1a1a1a;
+    }
+
+    .bottom {
+      padding: 12px 16px 24px;
+      background: #faf7f4;
+      border-top: 1px solid #ece8e2;
+    }
+
+    .input-row {
+      display: flex;
+      align-items: center;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 26px;
+      padding: 8px 8px 8px 16px;
+      gap: 8px;
+    }
+
+    .input-row input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 15px;
+      background: transparent;
+      color: #1a1a1a;
+    }
+
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .send-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: white;
+    }
+
+    .send-btn:disabled { background: #ccc; cursor: default; }
+  </style>
+</head>
+<body>
+
+<div class="header">PostAI ✨</div>
+
+<div class="chat" id="chat">
+  <div class="msg bot">
+    Përshëndetje! Unë jam PostAI 👋<br><br>
+    Shkruaj temën e biznesit tënd dhe do të gjeneroj postime për rrjetet sociale që zgjedh.
+  </div>
+</div>
+
+<div class="bottom">
+  <div class="input-row">
+    <input type="text" id="userInput" placeholder="Shkruaj temën e biznesit..." onkeydown="if(event.key==='Enter') sendMessage()">
+    <button class="send-btn" onclick="sendMessage()" id="sendBtn">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  const PLATFORMS = ["Instagram", "LinkedIn", "TikTok", "Facebook", "Twitter/X", "YouTube"];
+  const TONES = ["Argëtues", "Profesional", "Casual", "Bindës"];
+  const ICONS = {
+    "Instagram": "📸", "LinkedIn": "💼", "TikTok": "🎵",
+    "Facebook": "👥", "Twitter/X": "🐦", "YouTube": "▶️"
+  };
+
+  let state = { step: "topic", topic: "", platforms: [], tone: "" };
+
+  function addMsg(text, type) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.className = `msg ${type}`;
+    div.innerHTML = text;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+  }
+
+  function addChips(items, onSelect, multi = false) {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.className = "msg bot";
+    const row = document.createElement("div");
+    row.className = "options-row";
+    const selected = [];
+
+    items.forEach(item => {
+      const btn = document.createElement("button");
+      btn.className = "option-chip";
+      btn.textContent = item;
+      btn.onclick = () => {
+        if (multi) {
+          btn.classList.toggle("selected");
+          const idx = selected.indexOf(item);
+          if (idx > -1) selected.splice(idx, 1);
+          else selected.push(item);
+        } else {
+          onSelect([item]);
+          div.querySelectorAll(".option-chip").forEach(b => b.disabled = true);
+        }
+      };
+      row.appendChild(btn);
+    });
+
+    if (multi) {
+      const confirmBtn = document.createElement("button");
+      confirmBtn.className = "option-chip";
+      confirmBtn.style.background = "#1a1a1a";
+      confirmBtn.style.color = "white";
+      confirmBtn.style.borderColor = "#1a1a1a";
+      confirmBtn.textContent = "Vazhdo →";
+      confirmBtn.onclick = () => {
+        if (selected.length === 0) { alert("Zgjidh të paktën një!"); return; }
+        div.querySelectorAll(".option-chip").forEach(b => b.disabled = true);
+        onSelect(selected);
+      };
+      row.appendChild(confirmBtn);
+    }
+
+    div.appendChild(row);
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function askPlatforms() {
+    addMsg("Cilat platforma? Zgjidh një ose më shumë:", "bot");
+    addChips(PLATFORMS, (selected) => {
+      state.platforms = selected;
+      addMsg(selected.join(", "), "user");
+      askTone();
+    }, true);
+  }
+
+  function askTone() {
+    addMsg("Çfarë toni dëshiron?", "bot");
+    addChips(TONES, (selected) => {
+      state.tone = selected[0];
+      addMsg(selected[0], "user");
+      generatePosts();
+    });
+  }
+
+  async function generatePosts() {
+    const typing = addMsg("Duke gjeneruar postimet...", "bot typing");
+
+    try {
+      const res = await fetch("/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: state.topic,
+          platforms: state.platforms,
+          tone: state.tone,
+          lang: "shqip"
+        })
+      });
+
+      const data = await res.json();
+      typing.remove();
+
+      if (data.error) throw new Error(data.error);
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "msg bot";
+      wrapper.innerHTML = `Ja postimet për <strong>${state.topic}</strong>:`;
+
+      data.posts.forEach((post, i) => {
+        const card = document.createElement("div");
+        card.className = "post-card";
+        card.innerHTML = `
+          <div class="post-card-header">
+            <span class="platform-label">${ICONS[post.platform] || ""} ${post.platform}</span>
+            <button class="copy-btn" onclick="copyPost(this, '${encodeURIComponent(post.content + (post.hashtags ? '\n\n' + post.hashtags : ''))}')">Kopjo</button>
+          </div>
+          <div class="post-content">${post.content}</div>
+          ${post.hashtags ? `<div class="post-hashtags">${post.hashtags}</div>` : ""}
+        `;
+        wrapper.appendChild(card);
+      });
+
+      const chat = document.getElementById("chat");
+      chat.appendChild(wrapper);
+      chat.scrollTop = chat.scrollHeight;
+
+      setTimeout(() => {
+        addMsg("Dëshiron të gjenerosh për një temë tjetër? Shkruaj temën! 🚀", "bot");
+        state = { step: "topic", topic: "", platforms: [], tone: "" };
+        document.getElementById("sendBtn").disabled = false;
+        document.getElementById("userInput").disabled = false;
+      }, 500);
+
+    } catch (e) {
+      typing.remove();
+      addMsg("Gabim: " + e.message, "bot");
+    }
+  }
+
+  function copyPost(btn, encoded) {
+    navigator.clipboard.writeText(decodeURIComponent(encoded));
+    btn.textContent = "✓ U kopjua!";
+    setTimeout(() => btn.textContent = "Kopjo", 2000);
+  }
+
+  function sendMessage() {
+    const input = document.getElementById("userInput");
+    const text = input.value.trim();
+    if (!text) return;
+
+    addMsg(text, "user");
+    input.value = "";
+
+    if (state.step === "topic") {
+      state.topic = text;
+      state.step = "platforms";
+      document.getElementById("sendBtn").disabled = true;
+      document.getElementById("userInput").disabled = true;
+      setTimeout(askPlatforms, 300);
+    }
+  }
+</script>
+</body>
+</html>
